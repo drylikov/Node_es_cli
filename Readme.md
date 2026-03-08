@@ -1,10 +1,7 @@
-
-# Node_es_cli
+# Node es cli .
 
   Elastic search CLI for nodejs, using [elucene](https://github.com/drylikov/Elucene) to provide
   __FIELDS__, __SORT__, and __LIMIT__.
-
-
 
 ## Installation
 
@@ -92,7 +89,6 @@ $ es -u <es-url> login FIELDS id name
   level: 'info',
   type: 'user logout' }
 ```
-
 
 
 
