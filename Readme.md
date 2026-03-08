@@ -89,11 +89,3 @@ $ es -u <es-url> login FIELDS id name
   level: 'info',
   type: 'user logout' }
 ```
-
-
-
-
-
-
-
-
