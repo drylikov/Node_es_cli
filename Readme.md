@@ -240,4 +240,3 @@ $ es -u <es-url> login FIELDS id name
 
 
 
-
