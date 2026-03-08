@@ -1,0 +1,170 @@
+
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var humanize = require('humanize-number');
+var inspect = require('util').inspect;
+var program = require('commander');
+var pkg = require('../package');
+var moment = require('moment');
+var bytes = require('bytes');
+var fmt = require('printf');
+var ES = require('..');
+
+// options
+
+program
+  .version(pkg.version)
+  .usage('[options] [query]')
+  .option('-e, --examples', 'output query examples')
+  .option('-u, --url <url>', 'elastic search url')
+  .option('-S, --stats', 'output log stats')
+  .option('-f, --tail', 'tail the log')
+  .parse(process.argv);
+
+// examples
+
+if (program.examples) {
+  console.log();
+  console.log('  $ logs level:info AND "Loaded a page" FROM 1pm');
+  console.log();
+  console.log('  $ logs level:critical LIMIT 5');
+  console.log();
+  console.log('  $ logs Track FROM yesterday');
+  console.log();
+  console.log('  $ logs hostname:api-1 AND level:error AND some-uuid');
+  console.log();
+  return;
+}
+
+// size
+
+if (process.stdout.isTTY) {
+  var size = process.stdout.getWindowSize();
+  var cols = size[0];
+  var rows = size[1];
+} else {
+  var cols = 180;
+  var rows = 40;
+}
+
+// query
+
+var str = program.args.map(quote).join(' ');
+
+// setup
+
+var es = new ES({
+  url: program.url
+});
+
+// --stats
+
+if (program.stats) {
+  return es.stats(function(err, res){
+    if (err) throw err;
+    var all = res._all;
+    console.log();
+    console.log('  - count: %s', humanize(all.primaries.docs.count));
+    console.log('  - store: %s', bytes(all.primaries.store.size_in_bytes));
+    console.log();
+  });
+}
+
+// --tail
+
+if (program.tail) return tail(str);
+
+/**
+ * Tail with the given query `str`.
+ */
+
+function tail(str, prev) {
+  var now = Date.now();
+  var prev = prev || now;
+
+  str = str || '*';
+  var range = ' AND timestamp:[' + prev + ' TO ' + now + ']';
+  var query = es.query(str + range, { limit: 1e5 });
+
+  query.on('data', function(log){
+    output(log);
+  });
+
+  query.on('end', function(){
+    setTimeout(function(){
+      tail(str, now);
+    }, 100);
+  });
+}
+
+// query
+
+var query = es.query(str);
+
+// output
+
+query.on('data', function(log){
+  output(log, { format: 'MMMM Do, h:mm:ssa' });
+});
+
+query.on('end', function(){
+  console.log();
+});
+
+/**
+ * Output `log`.
+ */
+
+function output(log, opts) {
+  opts = opts || {};
+  var format = opts.format || 'hh:mm:ssa';
+  var date = moment(log.timestamp).format(format);
+  var host = log.hostname;
+  var msg = log.message;
+  var level = log.level;
+  var type = log.type;
+
+  var color = '0';
+  if ('warn' == level) color = '33';
+  if ('error' == level) color = '31';
+  if ('fatal' == level) color = '31';
+
+  msg = inspect(msg, { colors: true, depth: Infinity });
+
+  console.log();
+  console.log(hr());
+  console.log('   \033[' + color + 'm%s\033[m | %s | %s | %s', level, host, type, date);
+  console.log(hr());
+  console.log();
+  console.log(msg.replace(/^/gm, '  '));
+}
+
+/**
+ * Quote phrases in an argument.
+ */
+
+function quote(str) {
+  if (str.match(/^\w+:/) && str.match(/\s+/)) {
+    var field = str.split(':')[0];
+    var value = str.split(':')[1];
+    return field + ':"' + value + '"';
+  }
+
+  if (str.match(/\s+/)) {
+    return '"' + str + '"';
+  }
+
+  return str;
+}
+
+/**
+ * Return a horizontal rule.
+ */
+
+function hr() {
+  return '  \033[90m' + Array(cols - 4).join('─') + '\033[m';
+}
